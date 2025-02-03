@@ -3,4 +3,4 @@ langchain_community
 langchain_ollama
 pdfplumber
 faiss-cpu
-    
+langchain

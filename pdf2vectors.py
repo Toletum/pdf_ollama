@@ -1,32 +1,51 @@
+import os
 from langchain_community.document_loaders import PDFPlumberLoader
 from langchain_ollama import OllamaEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-import faiss
 from langchain_community.vectorstores import FAISS
-from langchain_community.docstore.in_memory import InMemoryDocstore
 
-# Initialize embeddings and vector store
+# Inicializar embeddings
 embeddings = OllamaEmbeddings(base_url="http://toletum:11434", model="deepseek-r1:8b")
-index = faiss.IndexFlatL2(len(embeddings.embed_query("hello world")))  # Get embedding dimension dynamically
-vector_store = FAISS(
-    embedding_function=embeddings,
-    index=index,
-    docstore=InMemoryDocstore(),  # Consider persistent docstore for larger datasets
-    index_to_docstore_id={}
-)
 
-# Load and chunk the PDF
-loader = PDFPlumberLoader("pdf/JoseCarlosSanchezGomezES.pdf")
-documents = loader.load()
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,
-    chunk_overlap=200,
-    add_start_index=True
-)
-chunked_documents = text_splitter.split_documents(documents)
+pdf_directory = "pdf"
+processed_files = set()
 
-# Add documents to the vector store
-vector_store.add_documents(chunked_documents)
 
-# Save the vector store
-vector_store.save_local("./data")
+try:
+    vector_store = FAISS.load_local("./data", embeddings, allow_dangerous_deserialization=True)
+    for doc in vector_store.docstore._dict.values():
+        if "source" in doc.metadata:
+            processed_files.add(doc.metadata["source"])
+except Exception as ex:
+    vector_store = None
+
+
+all_documents = []
+# Cargar documentos PDF
+for filename in os.listdir(pdf_directory):
+    if filename.endswith(".pdf") and filename not in processed_files:   
+        filepath = os.path.join(pdf_directory, filename)
+        print(f"Loading... {filepath}")
+        loader = PDFPlumberLoader(filepath)
+        documents = loader.load()
+        for doc in documents:
+            doc.metadata["source"] = filename
+        all_documents.extend(documents)
+
+
+if all_documents:
+    # Dividir documentos en fragmentos
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    chunked_documents = text_splitter.split_documents(all_documents)
+
+    if vector_store:
+        print("Vector Database update")
+        vector_store.add_documents(chunked_documents)
+    else:    
+        print("Vector Database create")
+        vector_store = FAISS.from_documents(chunked_documents, embedding=embeddings)
+
+    # Guardar la base de datos en disco
+    vector_store.save_local("./data")
+else:
+    print("Nothing to do")

@@ -6,6 +6,11 @@ You need a ollama server running
 in the example: http://toletum:11434
 
 
+# Example
+
+create ./pdf directory and ./data
+
+
 # Example 1
 
 main.py -> read pdf and use it
